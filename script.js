@@ -10,7 +10,8 @@
   const LEVELS = [
     {
       km: 5,
-      label: 'Nivel 1 · Calle (5K)',
+      raceName: 'Media maratón de Tuluá',
+      hudShort: '5K · Tuluá',
       theme: 'street',
       durationMs: 45_000,
       zSpeed: 380,
@@ -20,7 +21,8 @@
     },
     {
       km: 10,
-      label: 'Nivel 2 · Trial (10K)',
+      raceName: 'Media maratón de Buga',
+      hudShort: '10K · Buga',
       theme: 'trial',
       durationMs: 60_000,
       zSpeed: 460,
@@ -30,8 +32,9 @@
     },
     {
       km: 15,
-      label: 'Nivel 3 · Calle (15K)',
-      theme: 'street',
+      raceName: 'Sevilla Trial',
+      hudShort: '15K · Sevilla Trial',
+      theme: 'trial',
       durationMs: 90_000,
       zSpeed: 520,
       spawnMin: 1.2,
@@ -40,7 +43,8 @@
     },
     {
       km: 21,
-      label: 'Nivel 4 · Trial final (21K)',
+      raceName: 'Media maratón del Quindío',
+      hudShort: '21K · Quindío',
       theme: 'trial',
       durationMs: 120_000,
       zSpeed: 600,
@@ -124,10 +128,18 @@
   function startGame() {
     currentLevelIndex = 0;
     showScreen('game');
-    beginLevel(0);
+    // El canvas vive en una sección que al inicio está oculta (display:none) → clientWidth 0.
+    // Hay que medir tras el reflow; si no, el buffer queda 0×0 (pantalla negra hasta un resize).
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        resizeCanvas();
+        beginLevel(0);
+      });
+    });
   }
 
   function beginLevel(idx) {
+    resizeCanvas();
     currentLevelIndex = idx;
     levelStartTime = performance.now();
     obstacles = [];
@@ -137,7 +149,7 @@
     playerLane = 0;
     laneVisual = 0;
     running = true;
-    hudLevel.textContent = LEVELS[idx].label;
+    hudLevel.textContent = LEVELS[idx].raceName + ' · ' + LEVELS[idx].km + 'K';
     lastTs = 0;
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(gameLoop);
@@ -150,7 +162,12 @@
       return;
     }
     showScreen('game');
-    beginLevel(next);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        resizeCanvas();
+        beginLevel(next);
+      });
+    });
   }
 
   function moveLane(delta) {
@@ -220,7 +237,7 @@
     if (spawnTimer >= nextSpawnIn) {
       spawnTimer = 0;
       nextSpawnIn = L.spawnMin + Math.random() * (L.spawnMax - L.spawnMin);
-      if (Math.random() < L.spawnChance) spawnObstacle(L);
+      if (progress < 0.86 && Math.random() < L.spawnChance) spawnObstacle(L);
     }
 
     // Obstáculos avanzan hacia el jugador (z baja)
@@ -244,7 +261,7 @@
 
     runPhase += dt * 11;
 
-    drawWorld(L);
+    drawWorld(L, progress);
     rafId = requestAnimationFrame(gameLoop);
   }
 
@@ -255,10 +272,13 @@
 
   function updateHud(L, progress) {
     const kmLeft = L.km * (1 - progress);
-    hudKm.textContent =
-      kmLeft < 0.05
-        ? '¡Meta a la vista!'
-        : `${kmLeft.toFixed(1)} km restantes`;
+    if (kmLeft < 0.05) {
+      hudKm.textContent = '¡Meta! · ' + L.raceName;
+    } else if (progress > 0.72) {
+      hudKm.textContent = `${kmLeft.toFixed(1)} km · arco de llegada`;
+    } else {
+      hudKm.textContent = `${kmLeft.toFixed(1)} km restantes`;
+    }
     progressFill.style.width = `${(progress * 100).toFixed(2)}%`;
   }
 
@@ -305,13 +325,13 @@
       showScreen('victory');
       return;
     }
-    const nextKm = LEVELS[nextIdx].km;
-    betweenTitle.textContent = `¡Nivel ${currentLevelIndex + 1} completado!`;
-    betweenMsg.textContent = `Siguen los ${nextKm} K. ¡Tú puedes!`;
+    const nextL = LEVELS[nextIdx];
+    betweenTitle.textContent = `¡${LEVELS[currentLevelIndex].raceName} completada!`;
+    betweenMsg.textContent = `Siguiente: ${nextL.raceName} (${nextL.km} K). ¡Tú puedes!`;
     showScreen('between');
   }
 
-  function drawWorld(L) {
+  function drawWorld(L, progress) {
     ctx.save();
     ctx.scale(cssCanvasW / LOGICAL_W, cssCanvasH / LOGICAL_H);
 
@@ -319,8 +339,104 @@
     else drawSkyTrial();
 
     drawRoad3D(L.theme);
+    drawFinishArch(L, progress);
     drawObstacles3D(L.theme);
     drawPlayerBehind();
+
+    ctx.restore();
+  }
+
+  /**
+   * Arco inflable de meta en perspectiva (se acerca en los últimos ~30% del nivel).
+   */
+  function pathRoundRect(ctx2, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx2.beginPath();
+    ctx2.moveTo(x + rr, y);
+    ctx2.arcTo(x + w, y, x + w, y + h, rr);
+    ctx2.arcTo(x + w, y + h, x, y + h, rr);
+    ctx2.arcTo(x, y + h, x, y, rr);
+    ctx2.arcTo(x, y, x + w, y, rr);
+    ctx2.closePath();
+  }
+
+  function drawFinishArch(L, progress) {
+    if (progress < 0.7) return;
+    const t = (progress - 0.7) / 0.3;
+    const zArch = 55 + Z_SPAWN * 0.72 * (1 - t);
+    const pl = project(-1, zArch);
+    const pr = project(1, zArch);
+    const pm = project(0, zArch);
+    if (pl.t < 0.03) return;
+
+    const sc = pl.scale;
+    const archH = 115 * sc;
+    const thick = Math.max(10, 14 * sc);
+
+    const yBaseL = pl.y + 35 * sc;
+    const yBaseR = pr.y + 35 * sc;
+    const yTopL = yBaseL - archH;
+    const yTopR = yBaseR - archH;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 12 * sc;
+
+    const colA = L.theme === 'street' ? '#f8f8f8' : '#fff8e8';
+    const colB = L.theme === 'street' ? '#e63946' : '#2a9d8f';
+
+    function pillar(px, pyB, pyT) {
+      const g = ctx.createLinearGradient(px - thick, pyT, px + thick, pyB);
+      g.addColorStop(0, colA);
+      g.addColorStop(0.5, '#ffffff');
+      g.addColorStop(1, '#d8d8d8');
+      ctx.fillStyle = g;
+      pathRoundRect(ctx, px - thick * 0.85, pyT, thick * 1.7, pyB - pyT, 6 * sc);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+      ctx.lineWidth = 1.2 * sc;
+      ctx.stroke();
+    }
+
+    pillar(pl.x, yBaseL, yTopL);
+    pillar(pr.x, yBaseR, yTopR);
+
+    const bandY = (yTopL + yTopR) / 2 - 8 * sc;
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = colB;
+    ctx.lineWidth = Math.max(8, 11 * sc);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pl.x, yTopL + 5 * sc);
+    ctx.quadraticCurveTo(pm.x, yTopL - 42 * sc, pr.x, yTopR + 5 * sc);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = Math.max(3, 4 * sc);
+    ctx.beginPath();
+    ctx.moveTo(pl.x, yTopL + 5 * sc);
+    ctx.quadraticCurveTo(pm.x, yTopL - 42 * sc, pr.x, yTopR + 5 * sc);
+    ctx.stroke();
+
+    ctx.fillStyle = colB;
+    ctx.globalAlpha = 0.95;
+    const bw = Math.min(220 * sc, 280);
+    const bh = 30 * sc;
+    pathRoundRect(ctx, pm.x - bw / 2, bandY - bh / 2, bw, bh, 5 * sc);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    const fontStack = 'Segoe UI, system-ui, sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.font = `700 ${Math.max(11, 13 * sc)}px ${fontStack}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('META', pm.x, bandY - 4 * sc);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.font = `600 ${Math.max(7, 8.5 * sc)}px ${fontStack}`;
+    const sub = L.raceName.length > 32 ? L.hudShort : L.raceName;
+    ctx.fillText(sub, pm.x, bandY + 10 * sc);
 
     ctx.restore();
   }
@@ -449,108 +565,178 @@
   }
 
   /**
-   * Jugadora vista desde atrás: silueta femenina, cabello lacio largo, ropa deportiva.
+   * Jugadora vista desde atrás: formas orgánicas (curvas + degradés), pelo lacio largo, menos “cuadrado”.
+   * Sin librería externa: evita peso en GitHub Pages; un motor 2D (Pixi) solo aportaría sprites si tuvieras PNG.
    */
   function drawPlayerBehind() {
     const p = project(laneVisual, 0);
     const baseY = ROAD_BOTTOM - 118;
-    const footY = baseY;
     const bob = Math.sin(runPhase) * 4;
     const x = p.x;
-    const y = footY + bob;
+    const y = baseY + bob;
+    const arm = Math.sin(runPhase) * 9;
 
-    const hairLen = 95;
-    ctx.fillStyle = '#121212';
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.beginPath();
-    ctx.moveTo(x - 22, y - 165);
-    ctx.quadraticCurveTo(x - 38, y - 80, x - 28, y - 35);
-    ctx.lineTo(x - 18, y - 40);
-    ctx.quadraticCurveTo(x - 24, y - 100, x - 14, y - 168);
+    ctx.ellipse(x, y + 6, 34, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const hairGrad = ctx.createLinearGradient(x - 40, y - 200, x + 40, y - 40);
+    hairGrad.addColorStop(0, '#0a0a0a');
+    hairGrad.addColorStop(0.45, '#1f1f1f');
+    hairGrad.addColorStop(1, '#2a2a2a');
+    ctx.fillStyle = hairGrad;
+    ctx.beginPath();
+    ctx.moveTo(x - 8, y - 188);
+    ctx.bezierCurveTo(x - 42, y - 175, x - 48, y - 95, x - 34, y - 42);
+    ctx.bezierCurveTo(x - 28, y - 28, x - 18, y - 32, x - 12, y - 48);
+    ctx.bezierCurveTo(x - 20, y - 120, x - 18, y - 165, x - 6, y - 188);
     ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(x + 22, y - 165);
-    ctx.quadraticCurveTo(x + 38, y - 80, x + 28, y - 35);
-    ctx.lineTo(x + 18, y - 40);
-    ctx.quadraticCurveTo(x + 24, y - 100, x + 14, y - 168);
+    ctx.moveTo(x + 8, y - 188);
+    ctx.bezierCurveTo(x + 42, y - 175, x + 48, y - 95, x + 34, y - 42);
+    ctx.bezierCurveTo(x + 28, y - 28, x + 18, y - 32, x + 12, y - 48);
+    ctx.bezierCurveTo(x + 20, y - 120, x + 18, y - 165, x + 6, y - 188);
     ctx.closePath();
     ctx.fill();
-    ctx.fillRect(x - 10, y - 168, 20, hairLen);
+
+    ctx.fillStyle = hairGrad;
+    ctx.beginPath();
+    ctx.moveTo(x - 14, y - 188);
+    ctx.quadraticCurveTo(x, y - 125, x + 14, y - 188);
+    ctx.lineTo(x + 10, y - 68);
+    ctx.quadraticCurveTo(x, y - 58, x - 10, y - 68);
+    ctx.closePath();
+    ctx.fill();
+
+    const skinG = ctx.createRadialGradient(x - 8, y - 178, 4, x, y - 168, 32);
+    skinG.addColorStop(0, '#d4a078');
+    skinG.addColorStop(1, '#a86b4a');
+    ctx.fillStyle = skinG;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 170, 24, 21, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(40,40,40,0.85)';
+    ctx.lineWidth = 1.8;
+    ctx.fillStyle = 'rgba(180, 210, 255, 0.35)';
+    ctx.beginPath();
+    pathRoundRect(ctx, x - 18, y - 182, 14, 9, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    pathRoundRect(ctx, x + 4, y - 182, 14, 9, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - 4, y - 177);
+    ctx.quadraticCurveTo(x, y - 175, x + 4, y - 177);
+    ctx.stroke();
+
+    const topG = ctx.createLinearGradient(x, y - 155, x, y - 105);
+    topG.addColorStop(0, '#f06292');
+    topG.addColorStop(1, '#c2185b');
+    ctx.fillStyle = topG;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 158);
+    ctx.quadraticCurveTo(x - 22, y - 148, x - 28, y - 128 + arm);
+    ctx.quadraticCurveTo(x - 30, y - 118, x - 22, y - 112);
+    ctx.quadraticCurveTo(x - 8, y - 118, x - 4, y - 138);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x, y - 158);
+    ctx.quadraticCurveTo(x + 22, y - 148, x + 28, y - 128 - arm);
+    ctx.quadraticCurveTo(x + 30, y - 118, x + 22, y - 112);
+    ctx.quadraticCurveTo(x + 8, y - 118, x + 4, y - 138);
+    ctx.closePath();
+    ctx.fill();
+
+    const waistG = ctx.createLinearGradient(x - 22, y - 118, x + 22, y - 78);
+    waistG.addColorStop(0, '#d81b60');
+    waistG.addColorStop(1, '#ad1457');
+    ctx.fillStyle = waistG;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 150);
+    ctx.bezierCurveTo(x - 24, y - 118, x - 26, y - 100, x - 20, y - 82);
+    ctx.quadraticCurveTo(x - 6, y - 74, x, y - 78);
+    ctx.quadraticCurveTo(x + 6, y - 74, x + 20, y - 82);
+    ctx.bezierCurveTo(x + 26, y - 100, x + 24, y - 118, x, y - 150);
+    ctx.closePath();
+    ctx.fill();
 
     ctx.fillStyle = '#1a1a1a';
     ctx.beginPath();
-    ctx.ellipse(x, y - 172, 26, 22, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y - 88, 20, 9, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = '#a86b4a';
-    ctx.fillRect(x - 8, y - 178, 16, 10);
-
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(x - 14, y - 182, 11, 7);
-    ctx.strokeRect(x + 3, y - 182, 11, 7);
+    const legG = ctx.createLinearGradient(x - 22, y - 78, x - 2, y - 28);
+    legG.addColorStop(0, '#c68642');
+    legG.addColorStop(1, '#8d552f');
+    ctx.fillStyle = legG;
     ctx.beginPath();
-    ctx.moveTo(x - 3, y - 179);
-    ctx.lineTo(x + 3, y - 179);
+    ctx.moveTo(x - 8, y - 78);
+    ctx.quadraticCurveTo(x - 18, y - 55, x - 16, y - 32);
+    ctx.quadraticCurveTo(x - 12, y - 28, x - 4, y - 32);
+    ctx.quadraticCurveTo(x - 12, y - 58, x - 6, y - 78);
+    ctx.closePath();
+    ctx.fill();
+    const legG2 = ctx.createLinearGradient(x + 2, y - 78, x + 22, y - 28);
+    legG2.addColorStop(0, '#c68642');
+    legG2.addColorStop(1, '#8d552f');
+    ctx.fillStyle = legG2;
+    ctx.beginPath();
+    ctx.moveTo(x + 8, y - 78);
+    ctx.quadraticCurveTo(x + 18, y - 55, x + 16, y - 32);
+    ctx.quadraticCurveTo(x + 12, y - 28, x + 4, y - 32);
+    ctx.quadraticCurveTo(x + 12, y - 58, x + 6, y - 78);
+    ctx.closePath();
+    ctx.fill();
+
+    const shortG = ctx.createLinearGradient(x - 20, y - 82, x, y - 38);
+    shortG.addColorStop(0, '#1b5e20');
+    shortG.addColorStop(1, '#2e7d32');
+    ctx.fillStyle = shortG;
+    ctx.beginPath();
+    ctx.moveTo(x - 18, y - 80);
+    ctx.lineTo(x - 22, y - 40);
+    ctx.quadraticCurveTo(x - 10, y - 34, x - 2, y - 40);
+    ctx.quadraticCurveTo(x - 6, y - 62, x - 6, y - 78);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + 18, y - 80);
+    ctx.lineTo(x + 22, y - 40);
+    ctx.quadraticCurveTo(x + 10, y - 34, x + 2, y - 40);
+    ctx.quadraticCurveTo(x + 6, y - 62, x + 6, y - 78);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#f5f5f5';
+    pathRoundRect(ctx, x - 22, y - 36, 20, 11, 4);
+    ctx.fill();
+    pathRoundRect(ctx, x + 2, y - 36, 20, 11, 4);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    ctx.lineWidth = 1;
+    pathRoundRect(ctx, x - 22, y - 36, 20, 11, 4);
+    ctx.stroke();
+    pathRoundRect(ctx, x + 2, y - 36, 20, 11, 4);
     ctx.stroke();
 
-    ctx.fillStyle = '#d94f7a';
-    ctx.beginPath();
-    ctx.moveTo(x - 6, y - 155);
-    ctx.lineTo(x - 28, y - 125 + Math.sin(runPhase) * 8);
-    ctx.lineTo(x - 22, y - 118 + Math.sin(runPhase) * 8);
-    ctx.lineTo(x - 4, y - 138);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(x + 6, y - 155);
-    ctx.lineTo(x + 28, y - 125 - Math.sin(runPhase) * 8);
-    ctx.lineTo(x + 22, y - 118 - Math.sin(runPhase) * 8);
-    ctx.lineTo(x + 4, y - 138);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = '#c73e68';
-    ctx.beginPath();
-    ctx.moveTo(x, y - 158);
-    ctx.lineTo(x - 20, y - 115);
-    ctx.quadraticCurveTo(x - 24, y - 95, x - 18, y - 78);
-    ctx.lineTo(x + 18, y - 78);
-    ctx.quadraticCurveTo(x + 24, y - 95, x + 20, y - 115);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = '#2a2a2a';
-    ctx.fillRect(x - 16, y - 82, 32, 14);
-
-    ctx.fillStyle = '#b8734d';
-    ctx.fillRect(x - 14, y - 68, 10, 38 + Math.sin(runPhase) * 5);
-    ctx.fillRect(x + 4, y - 68, 10, 38 - Math.sin(runPhase) * 5);
-
-    ctx.fillStyle = '#1e3d2f';
-    ctx.beginPath();
-    ctx.moveTo(x - 16, y - 72);
-    ctx.lineTo(x - 18, y - 38);
-    ctx.lineTo(x - 6, y - 36);
-    ctx.lineTo(x - 4, y - 70);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(x + 16, y - 72);
-    ctx.lineTo(x + 18, y - 38);
-    ctx.lineTo(x + 6, y - 36);
-    ctx.lineTo(x + 4, y - 70);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = '#f2f2f2';
-    ctx.fillRect(x - 20, y - 34, 18, 9);
-    ctx.fillRect(x + 2, y - 34, 18, 9);
+    ctx.restore();
   }
 
   function resizeCanvas() {
     const wrap = canvas.parentElement;
-    const maxW = Math.min(wrap.clientWidth, LOGICAL_W);
+    let rawW = wrap.clientWidth;
+    if (rawW < 32) {
+      const app = document.getElementById('app');
+      rawW = app ? app.clientWidth - 48 : window.innerWidth - 32;
+    }
+    const maxW = Math.min(Math.max(rawW, 280), LOGICAL_W);
     const ratio = maxW / LOGICAL_W;
     const cssH = LOGICAL_H * ratio;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -565,6 +751,9 @@
   }
 
   window.addEventListener('resize', resizeCanvas);
+  if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
+    new ResizeObserver(() => resizeCanvas()).observe(canvas.parentElement);
+  }
   resizeCanvas();
 
   ctx.fillStyle = '#1d2b3a';

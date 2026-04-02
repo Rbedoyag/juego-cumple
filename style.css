@@ -181,13 +181,19 @@ kbd {
 }
 
 .hud-badge {
-  font-size: 0.8rem;
+  flex: 1 1 180px;
+  min-width: 0;
+  font-size: clamp(0.62rem, 2.8vw, 0.82rem);
   color: var(--accent);
   font-weight: 600;
+  line-height: 1.25;
 }
 
 .hud-km {
-  font-size: 0.85rem;
+  flex: 0 1 auto;
+  max-width: 38%;
+  text-align: right;
+  font-size: clamp(0.72rem, 3vw, 0.85rem);
   color: var(--text);
   font-weight: 700;
 }
