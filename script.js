@@ -104,6 +104,11 @@
       { f: 261.63, d: 0.14 },
     ];
 
+    /** Volumen general (sube música + SFX a la vez). */
+    const MASTER_VOL = 0.78;
+    const MUSIC_BUS = 0.38;
+    const SFX_BUS = 0.82;
+
     function init() {
       loadMute();
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -111,19 +116,19 @@
       if (!ctx) {
         ctx = new AC();
         masterGain = ctx.createGain();
-        masterGain.gain.value = muted ? 0 : 0.38;
+        masterGain.gain.value = muted ? 0 : MASTER_VOL;
         masterGain.connect(ctx.destination);
         musicGain = ctx.createGain();
-        musicGain.gain.value = 0.18;
+        musicGain.gain.value = MUSIC_BUS;
         musicGain.connect(masterGain);
         sfxGain = ctx.createGain();
-        sfxGain.gain.value = 0.42;
+        sfxGain.gain.value = SFX_BUS;
         sfxGain.connect(masterGain);
       }
       if (ctx.state === 'suspended') ctx.resume();
       if (masterGain && ctx) {
         masterGain.gain.cancelScheduledValues(ctx.currentTime);
-        masterGain.gain.setValueAtTime(muted ? 0 : 0.38, ctx.currentTime);
+        masterGain.gain.setValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime);
       }
       return ctx;
     }
@@ -135,7 +140,7 @@
       osc.type = type || 'sine';
       osc.frequency.setValueAtTime(freq, startT);
       g.gain.setValueAtTime(0.0001, startT);
-      g.gain.exponentialRampToValueAtTime(0.2, startT + 0.028);
+      g.gain.exponentialRampToValueAtTime(0.38, startT + 0.028);
       g.gain.exponentialRampToValueAtTime(0.0001, startT + Math.max(0.06, dur));
       osc.connect(g);
       g.connect(dest);
@@ -184,7 +189,7 @@
       init();
       if (masterGain && ctx) {
         masterGain.gain.cancelScheduledValues(ctx.currentTime);
-        masterGain.gain.setValueAtTime(muted ? 0 : 0.38, ctx.currentTime);
+        masterGain.gain.setValueAtTime(muted ? 0 : MASTER_VOL, ctx.currentTime);
       }
       if (muted) stopBgm();
       else if (document.getElementById('screen-game').classList.contains('active')) {
@@ -210,7 +215,7 @@
       osc.frequency.exponentialRampToValueAtTime(55, t + 0.18);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.26, t + 0.025);
+      g.gain.exponentialRampToValueAtTime(0.48, t + 0.025);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
       osc.connect(g);
       g.connect(sfxGain);
