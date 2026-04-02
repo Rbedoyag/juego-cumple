@@ -1,59 +1,66 @@
 /**
- * Reto 35K — Runner con final por distancia (tiempo por nivel).
- * Listo para GitHub Pages: sin build, solo HTML/CSS/JS.
+ * Reto 35K — Runner en perspectiva (vista desde atrás, estilo Pepsiman).
+ * Solo 3 carriles: esquivar cambiando de carril (sin salto). Vanilla Canvas = ideal para GitHub Pages.
+ * Opcional futuro: Phaser/Pixi vía CDN si quisieras partículas o atlases; este archivo prioriza carga rápida.
  */
 
 (function () {
   'use strict';
 
-  // --- Configuración de niveles: km narrativos, duración real (~5–6 min total), tema y dificultad suave ---
   const LEVELS = [
     {
       km: 5,
       label: 'Nivel 1 · Calle (5K)',
       theme: 'street',
       durationMs: 45_000,
-      scroll: 220,
-      spawnMin: 1.4,
-      spawnMax: 2.4,
-      obstacleChance: 0.45,
+      zSpeed: 380,
+      spawnMin: 1.55,
+      spawnMax: 2.65,
+      spawnChance: 0.42,
     },
     {
       km: 10,
       label: 'Nivel 2 · Trial (10K)',
       theme: 'trial',
       durationMs: 60_000,
-      scroll: 280,
-      spawnMin: 1.15,
-      spawnMax: 2.0,
-      obstacleChance: 0.5,
+      zSpeed: 460,
+      spawnMin: 1.35,
+      spawnMax: 2.25,
+      spawnChance: 0.46,
     },
     {
       km: 15,
       label: 'Nivel 3 · Calle (15K)',
       theme: 'street',
       durationMs: 90_000,
-      scroll: 320,
-      spawnMin: 1.0,
-      spawnMax: 1.75,
-      obstacleChance: 0.55,
+      zSpeed: 520,
+      spawnMin: 1.2,
+      spawnMax: 2.05,
+      spawnChance: 0.48,
     },
     {
       km: 21,
       label: 'Nivel 4 · Trial final (21K)',
       theme: 'trial',
       durationMs: 120_000,
-      scroll: 380,
-      spawnMin: 0.85,
-      spawnMax: 1.55,
-      obstacleChance: 0.58,
+      zSpeed: 600,
+      spawnMin: 1.05,
+      spawnMax: 1.85,
+      spawnChance: 0.5,
     },
   ];
 
+  const TYPE_DEF = {
+    cone: { emoji: '🚧', size: 1 },
+    pothole: { emoji: '🕳️', size: 0.95 },
+    dog: { emoji: '🐕', size: 1.05 },
+    rock: { emoji: '🪨', size: 1 },
+    log: { emoji: '🪵', size: 1 },
+    cow: { emoji: '🐄', size: 1.15 },
+  };
   const STREET_TYPES = ['cone', 'pothole', 'dog'];
   const TRIAL_TYPES = ['rock', 'log', 'cow'];
 
-  // --- DOM ---
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
   const screens = {
@@ -76,33 +83,38 @@
     currentLevelIndex = 0;
   });
 
-  // --- Estado del juego ---
+  // --- Perspectiva: z grande = lejos, z -> 0 se acerca al jugador ---
+  const Z_SPAWN = 2600;
+  const Z_REMOVE = -350;
+  /** Solo una comprobación por obstáculo cuando cruza este plano (evita dobles golpes). */
+  const Z_PASS = 130;
+
+  const LOGICAL_W = 800;
+  const LOGICAL_H = 480;
+  const HORIZON_Y = 105;
+  const ROAD_BOTTOM = LOGICAL_H - 8;
+  const LANE_SPREAD_BOTTOM = 108;
+  const CX = LOGICAL_W / 2;
+
+  let cssCanvasW = LOGICAL_W;
+  let cssCanvasH = LOGICAL_H;
+
   let currentLevelIndex = 0;
   let levelStartTime = 0;
   let obstacles = [];
   let spawnTimer = 0;
   let nextSpawnIn = 1.5;
-  let bgOffset = 0;
-  let parallaxOffset = 0;
+  let roadPhase = 0;
   let running = false;
   let rafId = 0;
   let lastTs = 0;
 
-  // Física del personaje (salto)
-  const GROUND_H = 78;
-  let playerY = 0;
-  let playerVy = 0;
-  const GRAVITY = 2600;
-  const JUMP_V = -720;
-  const PLAYER_X = 130;
+  /** Carril lógico: -1 izquierda, 0 centro, 1 derecha */
+  let playerLane = 0;
+  /** Interpolación visual hacia playerLane */
+  let laneVisual = 0;
+
   let runPhase = 0;
-
-  const LOGICAL_W = 800;
-  const LOGICAL_H = 400;
-
-  /** Tamaño lógico del área de dibujo en píxeles CSS (tras DPR). */
-  let cssCanvasW = LOGICAL_W;
-  let cssCanvasH = LOGICAL_H;
 
   function showScreen(name) {
     Object.values(screens).forEach((el) => el.classList.remove('active'));
@@ -115,27 +127,20 @@
     beginLevel(0);
   }
 
-  /** Inicia un nivel: reinicia temporizador, obstáculos y posición del jugador. */
   function beginLevel(idx) {
     currentLevelIndex = idx;
-    const L = LEVELS[idx];
     levelStartTime = performance.now();
     obstacles = [];
     spawnTimer = 0;
-    nextSpawnIn = 1.2 + Math.random() * 0.8;
-    bgOffset = 0;
-    parallaxOffset = 0;
-    playerY = groundLevel();
-    playerVy = 0;
+    nextSpawnIn = 1.4 + Math.random() * 0.6;
+    roadPhase = 0;
+    playerLane = 0;
+    laneVisual = 0;
     running = true;
-    hudLevel.textContent = L.label;
+    hudLevel.textContent = LEVELS[idx].label;
     lastTs = 0;
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(gameLoop);
-  }
-
-  function groundLevel() {
-    return LOGICAL_H - GROUND_H - 86;
   }
 
   function continueAfterLevel() {
@@ -148,27 +153,47 @@
     beginLevel(next);
   }
 
-  function jump() {
+  function moveLane(delta) {
     if (!running) return;
-    const ground = groundLevel();
-    if (playerY >= ground - 0.5) {
-      playerVy = JUMP_V;
-    }
+    playerLane = Math.max(-1, Math.min(1, playerLane + delta));
   }
 
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space' || e.key === ' ') {
+    if (!screens.game.classList.contains('active')) return;
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
       e.preventDefault();
-      if (screens.game.classList.contains('active')) jump();
+      moveLane(-1);
+    } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+      e.preventDefault();
+      moveLane(1);
     }
   });
 
+  /** Mitad izquierda / derecha del canvas: un toque = un carril hacia ese lado. */
   canvas.addEventListener('pointerdown', (e) => {
+    if (!screens.game.classList.contains('active')) return;
     e.preventDefault();
-    if (screens.game.classList.contains('active')) jump();
+    const r = canvas.getBoundingClientRect();
+    const nx = (e.clientX - r.left) / r.width;
+    if (nx < 0.5) moveLane(-1);
+    else moveLane(1);
   });
 
-  /** Bucle principal: actualiza tiempo, spawn, física, colisiones y dibujo. */
+  /**
+   * Convierte carril y profundidad z a posición en pantalla (pseudo-3D).
+   * t = 1 cerca del jugador, 0 en horizonte.
+   */
+  function project(lane, z) {
+    const t = 1 - z / Z_SPAWN;
+    const clampedT = Math.max(0, Math.min(1, t));
+    const ease = clampedT * clampedT;
+    const spread = LANE_SPREAD_BOTTOM * (0.2 + 0.8 * ease);
+    const x = CX + lane * spread;
+    const y = HORIZON_Y + (ROAD_BOTTOM - HORIZON_Y - 95) * ease;
+    const scale = 0.22 + 0.78 * ease;
+    return { x, y, scale, t: clampedT };
+  }
+
   function gameLoop(ts) {
     if (!running) return;
     if (!lastTs) lastTs = ts;
@@ -178,7 +203,6 @@
     const L = LEVELS[currentLevelIndex];
     const elapsed = ts - levelStartTime;
 
-    // Victoria de nivel por tiempo (progreso = distancia recorrida en la narrativa)
     if (elapsed >= L.durationMs) {
       running = false;
       cancelAnimationFrame(rafId);
@@ -189,42 +213,44 @@
     const progress = elapsed / L.durationMs;
     updateHud(L, progress);
 
+    const zSpeed = L.zSpeed;
+    roadPhase += zSpeed * 0.00012 * dt;
+
     spawnTimer += dt;
     if (spawnTimer >= nextSpawnIn) {
       spawnTimer = 0;
       nextSpawnIn = L.spawnMin + Math.random() * (L.spawnMax - L.spawnMin);
-      if (Math.random() < L.obstacleChance) {
-        spawnObstacle(L);
-      }
+      if (Math.random() < L.spawnChance) spawnObstacle(L);
     }
 
-    const speed = L.scroll;
-    bgOffset = (bgOffset + speed * 0.15 * dt) % 200;
-    parallaxOffset = (parallaxOffset + speed * 0.08 * dt) % 300;
-    runPhase += dt * 12;
-
-    // Mover obstáculos hacia la izquierda
+    // Obstáculos avanzan hacia el jugador (z baja)
     for (let i = obstacles.length - 1; i >= 0; i--) {
-      obstacles[i].x -= speed * dt;
-      if (obstacles[i].x < -120) obstacles.splice(i, 1);
+      const o = obstacles[i];
+      o.z -= zSpeed * dt;
+
+      if (!o.scored && o.z <= Z_PASS) {
+        o.scored = true;
+        if (checkHit(o)) {
+          restartCurrentLevel();
+          return;
+        }
+      }
+      if (o.z < Z_REMOVE) obstacles.splice(i, 1);
     }
 
-    // Física salto
-    playerVy += GRAVITY * dt;
-    playerY += playerVy * dt;
-    const g = groundLevel();
-    if (playerY > g) {
-      playerY = g;
-      playerVy = 0;
-    }
+    // Suavizado de carril (evita saltos bruscos visuales)
+    const target = playerLane;
+    laneVisual += (target - laneVisual) * Math.min(1, 10 * dt);
 
-    if (checkCollisions()) {
-      restartCurrentLevel();
-      return;
-    }
+    runPhase += dt * 11;
 
     drawWorld(L);
     rafId = requestAnimationFrame(gameLoop);
+  }
+
+  /** Golpe si el obstáculo cruza el plano en el mismo carril que tú (solo esquivar con carril). */
+  function checkHit(o) {
+    return o.lane === playerLane;
   }
 
   function updateHud(L, progress) {
@@ -239,75 +265,21 @@
   function spawnObstacle(L) {
     const types = L.theme === 'street' ? STREET_TYPES : TRIAL_TYPES;
     const type = types[(Math.random() * types.length) | 0];
-    const ground = groundLevel();
-    let y = ground + 40;
-    let w = 50;
-    let h = 52;
-    let hitY = ground + 10;
-    let hitH = 76;
-
-    if (type === 'pothole') {
-      y = LOGICAL_H - 40;
-      w = 70;
-      h = 24;
-      hitY = LOGICAL_H - 88;
-      hitH = 28;
-    } else if (type === 'dog') {
-      h = 44;
-      hitY = ground + 28;
-      hitH = 50;
-    } else if (type === 'rock') {
-      w = 46;
-      h = 40;
-      hitY = ground + 35;
-      hitH = 55;
-    } else if (type === 'log') {
-      w = 72;
-      h = 36;
-      hitY = ground + 38;
-      hitH = 48;
-    } else if (type === 'cow') {
-      w = 64;
-      h = 56;
-      hitY = ground + 22;
-      hitH = 62;
-    } else if (type === 'cone') {
-      w = 36;
-      h = 48;
-      hitY = ground + 32;
-      hitH = 54;
-    }
-
-    obstacles.push({
-      type,
-      x: LOGICAL_W + 30,
-      y,
-      w,
-      h,
-      hitX: 0,
-      hitY,
-      hitW: w,
-      hitH,
-    });
-  }
-
-  /** AABB simple entre jugadora y cada obstáculo (caja un poco más benigna en el cuerpo). */
-  function checkCollisions() {
-    const px = PLAYER_X + 16;
-    const py = playerY + 12;
-    const pw = 40;
-    const ph = 72;
-
-    for (const o of obstacles) {
-      const ox = o.x + (o.w - o.hitW) / 2;
-      const oy = o.hitY;
-      const ow = o.hitW;
-      const oh = o.hitH;
-      if (px < ox + ow && px + pw > ox && py < oy + oh && py + ph > oy) {
-        return true;
+    let lane = (Math.random() * 3 | 0) - 1;
+    const recent = obstacles.filter((o) => o.z > Z_SPAWN - 700);
+    if (recent.length > 0) {
+      const last = recent[recent.length - 1];
+      if (last.lane === lane && Math.random() < 0.7) {
+        const opts = [-1, 0, 1].filter((l) => l !== lane);
+        lane = opts[(Math.random() * opts.length) | 0];
       }
     }
-    return false;
+    obstacles.push({
+      type,
+      lane,
+      z: Z_SPAWN + 80 + Math.random() * 120,
+      scored: false,
+    });
   }
 
   function restartCurrentLevel() {
@@ -320,15 +292,14 @@
       levelStartTime = performance.now();
       obstacles = [];
       spawnTimer = 0;
-      playerY = groundLevel();
-      playerVy = 0;
+      playerLane = 0;
+      laneVisual = 0;
       lastTs = 0;
       rafId = requestAnimationFrame(gameLoop);
     }, 650);
   }
 
   function onLevelComplete() {
-    const L = LEVELS[currentLevelIndex];
     const nextIdx = currentLevelIndex + 1;
     if (nextIdx >= LEVELS.length) {
       showScreen('victory');
@@ -340,190 +311,243 @@
     showScreen('between');
   }
 
-  // --- Dibujo: fondos Colombia (calle / trial), obstáculos con emoji, personaje personalizado ---
-
   function drawWorld(L) {
     ctx.save();
     ctx.scale(cssCanvasW / LOGICAL_W, cssCanvasH / LOGICAL_H);
 
-    if (L.theme === 'street') drawStreetBg();
-    else drawTrialBg();
+    if (L.theme === 'street') drawSkyStreet();
+    else drawSkyTrial();
 
-    drawGround(L.theme);
-    drawObstacles(L.theme);
-    drawPlayer();
+    drawRoad3D(L.theme);
+    drawObstacles3D(L.theme);
+    drawPlayerBehind();
 
     ctx.restore();
   }
 
-  function drawStreetBg() {
-    const grd = ctx.createLinearGradient(0, 0, 0, LOGICAL_H);
-    grd.addColorStop(0, '#6ecff6');
-    grd.addColorStop(0.45, '#b8e0f5');
-    grd.addColorStop(1, '#dfe8ec');
-    ctx.fillStyle = grd;
+  function drawSkyStreet() {
+    const g = ctx.createLinearGradient(0, 0, 0, HORIZON_Y + 40);
+    g.addColorStop(0, '#4facfe');
+    g.addColorStop(0.55, '#a8d8ff');
+    g.addColorStop(1, '#d4e9f7');
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
 
-    // Cerros tipo ciudad colombiana
-    ctx.fillStyle = '#5a7d6c';
+    ctx.fillStyle = '#5c8f72';
     ctx.beginPath();
-    ctx.moveTo(-50 + (parallaxOffset % 400), 220);
-    ctx.lineTo(180 + (parallaxOffset % 400), 120);
-    ctx.lineTo(400 + (parallaxOffset % 400), 200);
-    ctx.lineTo(620 + (parallaxOffset % 400), 100);
-    ctx.lineTo(900, 240);
-    ctx.lineTo(900, 280);
-    ctx.lineTo(-50, 280);
-    ctx.closePath();
+    ctx.moveTo(0, HORIZON_Y + 35);
+    ctx.lineTo(180 + (roadPhase * 80) % 200, HORIZON_Y - 15);
+    ctx.lineTo(400, HORIZON_Y + 20);
+    ctx.lineTo(620 - (roadPhase * 60) % 180, HORIZON_Y - 8);
+    ctx.lineTo(LOGICAL_W, HORIZON_Y + 30);
+    ctx.lineTo(LOGICAL_W, HORIZON_Y + 50);
+    ctx.lineTo(0, HORIZON_Y + 50);
     ctx.fill();
 
-    ctx.fillStyle = 'rgba(255, 200, 80, 0.35)';
-    ctx.fillRect(0, 0, LOGICAL_W, 70);
-
-    // Palma / sol tropical
-    ctx.font = '48px serif';
-    ctx.fillText('🌴', 40 - (bgOffset % 40), 95);
-    ctx.fillText('☀️', LOGICAL_W - 100, 72);
+    ctx.fillStyle = 'rgba(255, 220, 120, 0.45)';
+    ctx.beginPath();
+    ctx.arc(LOGICAL_W * 0.82, 68, 36, 0, Math.PI * 2);
+    ctx.fill();
   }
 
-  function drawTrialBg() {
-    const grd = ctx.createLinearGradient(0, 0, 0, LOGICAL_H);
-    grd.addColorStop(0, '#87ceeb');
-    grd.addColorStop(0.5, '#c5e8b8');
-    grd.addColorStop(1, '#e8f5e0');
-    ctx.fillStyle = grd;
+  function drawSkyTrial() {
+    const g = ctx.createLinearGradient(0, 0, 0, HORIZON_Y + 50);
+    g.addColorStop(0, '#6eb5ff');
+    g.addColorStop(0.4, '#b5e0c8');
+    g.addColorStop(1, '#dcefd5');
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
 
-    // Montañas andinas simplificadas
-    ctx.fillStyle = '#4a6fa5';
-    for (let i = 0; i < 4; i++) {
-      const bx = i * 260 - (parallaxOffset * 0.5 % 260);
+    ctx.fillStyle = '#3d5a80';
+    for (let i = 0; i < 5; i++) {
+      const bx = i * 200 - (roadPhase * 100) % 200;
       ctx.beginPath();
-      ctx.moveTo(bx, 280);
-      ctx.lineTo(bx + 120, 100);
-      ctx.lineTo(bx + 240, 280);
-      ctx.closePath();
+      ctx.moveTo(bx, HORIZON_Y + 45);
+      ctx.lineTo(bx + 100, HORIZON_Y - 40);
+      ctx.lineTo(bx + 200, HORIZON_Y + 45);
       ctx.fill();
     }
 
-    ctx.fillStyle = '#3d7c47';
+    ctx.fillStyle = '#2d6a3e';
     ctx.beginPath();
-    ctx.moveTo(0, 260);
-    ctx.quadraticCurveTo(200, 200, 400, 270);
-    ctx.quadraticCurveTo(600, 220, LOGICAL_W, 265);
-    ctx.lineTo(LOGICAL_W, LOGICAL_H);
-    ctx.lineTo(0, LOGICAL_H);
+    ctx.moveTo(0, HORIZON_Y + 40);
+    ctx.quadraticCurveTo(LOGICAL_W * 0.35, HORIZON_Y - 5, LOGICAL_W * 0.5, HORIZON_Y + 25);
+    ctx.quadraticCurveTo(LOGICAL_W * 0.7, HORIZON_Y, LOGICAL_W, HORIZON_Y + 35);
+    ctx.lineTo(LOGICAL_W, HORIZON_Y + 55);
+    ctx.lineTo(0, HORIZON_Y + 55);
+    ctx.fill();
+  }
+
+  function drawRoad3D(theme) {
+    const vanW = 14;
+    const bottomW = LOGICAL_W - 36;
+    const bx0 = CX - bottomW / 2;
+    const bx1 = CX + bottomW / 2;
+
+    ctx.fillStyle = theme === 'street' ? '#2f2f38' : '#4a3518';
+    ctx.beginPath();
+    ctx.moveTo(CX - vanW / 2, HORIZON_Y);
+    ctx.lineTo(bx0, ROAD_BOTTOM);
+    ctx.lineTo(bx1, ROAD_BOTTOM);
+    ctx.lineTo(CX + vanW / 2, HORIZON_Y);
+    ctx.closePath();
     ctx.fill();
 
-    ctx.font = '40px serif';
-    ctx.fillText('🌿', 500 - (bgOffset % 30), 200);
-  }
-
-  function drawGround(theme) {
-    const y0 = LOGICAL_H - GROUND_H;
-    if (theme === 'street') {
-      ctx.fillStyle = '#4a4a52';
-      ctx.fillRect(0, y0, LOGICAL_W, GROUND_H);
-      ctx.strokeStyle = '#f4d03f';
-      ctx.lineWidth = 4;
-      ctx.setLineDash([22, 18]);
+    ctx.strokeStyle = theme === 'street' ? 'rgba(255, 230, 120, 0.92)' : 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = theme === 'street' ? 3 : 2;
+    const stripes = 10;
+    for (let i = 0; i < stripes; i++) {
+      const k = (i + roadPhase * 2) % stripes / stripes;
+      const k2 = (i + 1 + roadPhase * 2) % stripes / stripes;
+      const p0 = project(0, Z_SPAWN * (1 - k));
+      const p1 = project(0, Z_SPAWN * (1 - k2));
+      if (p0.t < 0.05 || p1.t < 0.05) continue;
       ctx.beginPath();
-      ctx.moveTo(0, y0 + GROUND_H / 2);
-      ctx.lineTo(LOGICAL_W, y0 + GROUND_H / 2);
+      ctx.moveTo(CX, p0.y);
+      ctx.lineTo(CX, p1.y);
       ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = '#6d6d75';
-      ctx.fillRect(0, y0, LOGICAL_W, 12);
-    } else {
-      ctx.fillStyle = '#8b6914';
-      ctx.fillRect(0, y0, LOGICAL_W, GROUND_H);
-      ctx.fillStyle = '#5c4a0f';
-      for (let x = -((bgOffset * 2) % 80); x < LOGICAL_W; x += 80) {
-        ctx.fillRect(x, y0 + 20, 40, 8);
-      }
     }
+
+    ctx.strokeStyle = theme === 'street' ? '#555' : '#6b5030';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(CX - vanW / 2, HORIZON_Y);
+    ctx.lineTo(bx0, ROAD_BOTTOM);
+    ctx.moveTo(CX + vanW / 2, HORIZON_Y);
+    ctx.lineTo(bx1, ROAD_BOTTOM);
+    ctx.stroke();
   }
 
-  const EMOJI = {
-    cone: '🚧',
-    pothole: '🕳️',
-    dog: '🐕',
-    rock: '🪨',
-    log: '🪵',
-    cow: '🐄',
-  };
-
-  function drawObstacles(theme) {
+  function drawObstacles3D(theme) {
+    const sorted = [...obstacles].sort((a, b) => b.z - a.z);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    for (const o of obstacles) {
-      const cy = o.type === 'pothole' ? o.y : o.y - o.h / 2 + 8;
-      ctx.font = `${Math.min(o.h + 18, 64)}px serif`;
-      ctx.fillText(EMOJI[o.type] || '▪', o.x + o.w / 2, cy);
+    for (const o of sorted) {
+      const def = TYPE_DEF[o.type];
+      const p = project(o.lane, o.z);
+      if (p.t < 0.02) continue;
+      const base = 52 * def.size * p.scale;
+      const shadowY = p.y + base * 0.45;
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.beginPath();
+      ctx.ellipse(p.x, shadowY, base * 0.55, base * 0.18, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = `${Math.max(18, base * 1.15)}px "Segoe UI Emoji", "Apple Color Emoji", serif`;
+      ctx.fillText(def.emoji, p.x, p.y - base * 0.15);
+
       if (theme === 'street' && o.type === 'cone') {
-        ctx.fillStyle = '#ff7f27';
-        ctx.fillRect(o.x + o.w / 2 - 8, o.y - 40, 16, 36);
+        ctx.fillStyle = '#ff8c42';
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - base * 0.55);
+        ctx.lineTo(p.x - base * 0.22, p.y + base * 0.2);
+        ctx.lineTo(p.x + base * 0.22, p.y + base * 0.2);
+        ctx.closePath();
+        ctx.fill();
       }
     }
   }
 
   /**
-   * Personaje: mujer trigueña, pelo negro, lentes — dibujo vectorial en canvas.
+   * Jugadora vista desde atrás: silueta femenina, cabello lacio largo, ropa deportiva.
    */
-  function drawPlayer() {
-    const x = PLAYER_X;
-    const y = playerY;
-    const bob = Math.sin(runPhase) * 3;
+  function drawPlayerBehind() {
+    const p = project(laneVisual, 0);
+    const baseY = ROAD_BOTTOM - 118;
+    const footY = baseY;
+    const bob = Math.sin(runPhase) * 4;
+    const x = p.x;
+    const y = footY + bob;
 
-    // Pelo negro (atrás y volumen)
+    const hairLen = 95;
+    ctx.fillStyle = '#121212';
+    ctx.beginPath();
+    ctx.moveTo(x - 22, y - 165);
+    ctx.quadraticCurveTo(x - 38, y - 80, x - 28, y - 35);
+    ctx.lineTo(x - 18, y - 40);
+    ctx.quadraticCurveTo(x - 24, y - 100, x - 14, y - 168);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + 22, y - 165);
+    ctx.quadraticCurveTo(x + 38, y - 80, x + 28, y - 35);
+    ctx.lineTo(x + 18, y - 40);
+    ctx.quadraticCurveTo(x + 24, y - 100, x + 14, y - 168);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(x - 10, y - 168, 20, hairLen);
+
     ctx.fillStyle = '#1a1a1a';
     ctx.beginPath();
-    ctx.ellipse(x + 34, y + 28 + bob, 38, 32, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y - 172, 26, 22, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Brazo/cuerpo camiseta
-    ctx.fillStyle = '#e85d75';
-    ctx.fillRect(x + 18, y + 48 + bob, 36, 42);
-    ctx.fillStyle = '#c4475e';
-    ctx.fillRect(x + 22, y + 88 + bob, 28, 8);
+    ctx.fillStyle = '#a86b4a';
+    ctx.fillRect(x - 8, y - 178, 16, 10);
 
-    // Piel trigueña
-    ctx.fillStyle = '#b8734d';
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x - 14, y - 182, 11, 7);
+    ctx.strokeRect(x + 3, y - 182, 11, 7);
     ctx.beginPath();
-    ctx.ellipse(x + 36, y + 36 + bob, 22, 24, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Frente pelo
-    ctx.fillStyle = '#1a1a1a';
-    ctx.beginPath();
-    ctx.arc(x + 36, y + 22 + bob, 20, Math.PI * 1.1, Math.PI * 1.9);
-    ctx.fill();
-
-    // Lentes
-    ctx.strokeStyle = '#222';
-    ctx.lineWidth = 2;
-    ctx.fillStyle = 'rgba(200, 230, 255, 0.5)';
-    ctx.strokeRect(x + 22, y + 30 + bob, 14, 10);
-    ctx.fillRect(x + 23, y + 31 + bob, 12, 8);
-    ctx.strokeRect(x + 38, y + 30 + bob, 14, 10);
-    ctx.fillRect(x + 39, y + 31 + bob, 12, 8);
-    ctx.beginPath();
-    ctx.moveTo(x + 36, y + 35 + bob);
-    ctx.lineTo(x + 38, y + 35 + bob);
+    ctx.moveTo(x - 3, y - 179);
+    ctx.lineTo(x + 3, y - 179);
     ctx.stroke();
 
-    // Piernas (shorts)
-    ctx.fillStyle = '#2d6a4f';
-    ctx.fillRect(x + 22, y + 86 + bob, 12, 28 + Math.sin(runPhase) * 6);
-    ctx.fillRect(x + 38, y + 86 + bob, 12, 28 - Math.sin(runPhase) * 6);
+    ctx.fillStyle = '#d94f7a';
+    ctx.beginPath();
+    ctx.moveTo(x - 6, y - 155);
+    ctx.lineTo(x - 28, y - 125 + Math.sin(runPhase) * 8);
+    ctx.lineTo(x - 22, y - 118 + Math.sin(runPhase) * 8);
+    ctx.lineTo(x - 4, y - 138);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + 6, y - 155);
+    ctx.lineTo(x + 28, y - 125 - Math.sin(runPhase) * 8);
+    ctx.lineTo(x + 22, y - 118 - Math.sin(runPhase) * 8);
+    ctx.lineTo(x + 4, y - 138);
+    ctx.closePath();
+    ctx.fill();
 
-    // Zapatillas
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(x + 18, y + 108 + bob, 22, 10);
-    ctx.fillRect(x + 36, y + 108 + bob, 22, 10);
+    ctx.fillStyle = '#c73e68';
+    ctx.beginPath();
+    ctx.moveTo(x, y - 158);
+    ctx.lineTo(x - 20, y - 115);
+    ctx.quadraticCurveTo(x - 24, y - 95, x - 18, y - 78);
+    ctx.lineTo(x + 18, y - 78);
+    ctx.quadraticCurveTo(x + 24, y - 95, x + 20, y - 115);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#2a2a2a';
+    ctx.fillRect(x - 16, y - 82, 32, 14);
+
+    ctx.fillStyle = '#b8734d';
+    ctx.fillRect(x - 14, y - 68, 10, 38 + Math.sin(runPhase) * 5);
+    ctx.fillRect(x + 4, y - 68, 10, 38 - Math.sin(runPhase) * 5);
+
+    ctx.fillStyle = '#1e3d2f';
+    ctx.beginPath();
+    ctx.moveTo(x - 16, y - 72);
+    ctx.lineTo(x - 18, y - 38);
+    ctx.lineTo(x - 6, y - 36);
+    ctx.lineTo(x - 4, y - 70);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + 16, y - 72);
+    ctx.lineTo(x + 18, y - 38);
+    ctx.lineTo(x + 6, y - 36);
+    ctx.lineTo(x + 4, y - 70);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#f2f2f2';
+    ctx.fillRect(x - 20, y - 34, 18, 9);
+    ctx.fillRect(x + 2, y - 34, 18, 9);
   }
 
-  /** Escala el canvas con devicePixelRatio para nitidez en móviles. */
   function resizeCanvas() {
     const wrap = canvas.parentElement;
     const maxW = Math.min(wrap.clientWidth, LOGICAL_W);
@@ -543,7 +567,6 @@
   window.addEventListener('resize', resizeCanvas);
   resizeCanvas();
 
-  // Dibujo inicial en menú (fondo en coordenadas CSS)
   ctx.fillStyle = '#1d2b3a';
   ctx.fillRect(0, 0, cssCanvasW, cssCanvasH);
 })();
