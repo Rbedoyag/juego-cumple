@@ -65,6 +65,199 @@
   const STREET_TYPES = ['cone', 'pothole', 'dog'];
   const TRIAL_TYPES = ['rock', 'log', 'cow'];
 
+  /**
+   * Audio con Web Audio API (sin archivos MP3): música en bucle + SFX. Compatible con GitHub Pages.
+   * El navegador exige un gesto del usuario para iniciar el audio (al pulsar "Empezar carrera").
+   */
+  const GameAudio = (function () {
+    let ctx = null;
+    let masterGain = null;
+    let musicGain = null;
+    let sfxGain = null;
+    let bgmTimer = null;
+    let melStep = 0;
+    let muted = false;
+    let muteBtn = null;
+
+    function loadMute() {
+      try {
+        muted = localStorage.getItem('cumplemafe_muted') === '1';
+      } catch (e) {
+        muted = false;
+      }
+    }
+
+    function saveMute() {
+      try {
+        localStorage.setItem('cumplemafe_muted', muted ? '1' : '0');
+      } catch (e) {}
+    }
+
+    const MELODY = [
+      { f: 261.63, d: 0.11 },
+      { f: 329.63, d: 0.11 },
+      { f: 392.0, d: 0.11 },
+      { f: 329.63, d: 0.11 },
+      { f: 293.66, d: 0.11 },
+      { f: 349.23, d: 0.11 },
+      { f: 392.0, d: 0.11 },
+      { f: 261.63, d: 0.14 },
+    ];
+
+    function init() {
+      loadMute();
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!ctx) {
+        ctx = new AC();
+        masterGain = ctx.createGain();
+        masterGain.gain.value = muted ? 0 : 0.38;
+        masterGain.connect(ctx.destination);
+        musicGain = ctx.createGain();
+        musicGain.gain.value = 0.18;
+        musicGain.connect(masterGain);
+        sfxGain = ctx.createGain();
+        sfxGain.gain.value = 0.42;
+        sfxGain.connect(masterGain);
+      }
+      if (ctx.state === 'suspended') ctx.resume();
+      if (masterGain && ctx) {
+        masterGain.gain.cancelScheduledValues(ctx.currentTime);
+        masterGain.gain.setValueAtTime(muted ? 0 : 0.38, ctx.currentTime);
+      }
+      return ctx;
+    }
+
+    function playNoteAt(freq, dur, dest, type, startT) {
+      if (!ctx || muted) return;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.setValueAtTime(freq, startT);
+      g.gain.setValueAtTime(0.0001, startT);
+      g.gain.exponentialRampToValueAtTime(0.2, startT + 0.028);
+      g.gain.exponentialRampToValueAtTime(0.0001, startT + Math.max(0.06, dur));
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(startT);
+      osc.stop(startT + dur + 0.1);
+    }
+
+    function bgmTick() {
+      if (!ctx || muted) return;
+      const n = MELODY[melStep % MELODY.length];
+      melStep++;
+      playNoteAt(n.f, n.d, musicGain, 'triangle', ctx.currentTime);
+    }
+
+    function startBgm() {
+      stopBgm();
+      if (muted) return;
+      init();
+      if (!ctx) return;
+      melStep = 0;
+      bgmTimer = setInterval(bgmTick, 178);
+    }
+
+    function stopBgm() {
+      if (bgmTimer) {
+        clearInterval(bgmTimer);
+        bgmTimer = null;
+      }
+    }
+
+    function updateMuteBtn() {
+      if (!muteBtn) return;
+      muteBtn.textContent = muted ? '🔇' : '🔊';
+      muteBtn.setAttribute('aria-pressed', muted ? 'true' : 'false');
+    }
+
+    function bindMuteButton(el) {
+      muteBtn = el;
+      loadMute();
+      updateMuteBtn();
+    }
+
+    function toggleMute() {
+      muted = !muted;
+      saveMute();
+      init();
+      if (masterGain && ctx) {
+        masterGain.gain.cancelScheduledValues(ctx.currentTime);
+        masterGain.gain.setValueAtTime(muted ? 0 : 0.38, ctx.currentTime);
+      }
+      if (muted) stopBgm();
+      else if (document.getElementById('screen-game').classList.contains('active')) {
+        startBgm();
+      }
+      updateMuteBtn();
+    }
+
+    function sfxLane(direction) {
+      init();
+      if (!ctx || muted) return;
+      const f = direction < 0 ? 440 : 660;
+      playNoteAt(f, 0.055, sfxGain, 'sine', ctx.currentTime);
+    }
+
+    function sfxHit() {
+      init();
+      if (!ctx || muted) return;
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(200, t);
+      osc.frequency.exponentialRampToValueAtTime(55, t + 0.18);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.26, t + 0.025);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      osc.connect(g);
+      g.connect(sfxGain);
+      osc.start(t);
+      osc.stop(t + 0.22);
+    }
+
+    function sfxLevelDone() {
+      init();
+      if (!ctx || muted) return;
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      let t = ctx.currentTime + 0.04;
+      notes.forEach((f, i) => {
+        playNoteAt(f, 0.13, sfxGain, 'sine', t + i * 0.1);
+      });
+    }
+
+    function sfxVictory() {
+      init();
+      if (!ctx || muted) return;
+      const seq = [
+        [392, 0.1],
+        [523.25, 0.1],
+        [659.25, 0.1],
+        [783.99, 0.14],
+        [1046.5, 0.28],
+      ];
+      let t = ctx.currentTime + 0.06;
+      seq.forEach(([f, d]) => {
+        playNoteAt(f, d, sfxGain, 'triangle', t);
+        t += d * 0.92;
+      });
+    }
+
+    return {
+      init,
+      startBgm,
+      stopBgm,
+      toggleMute,
+      bindMuteButton,
+      sfxLane,
+      sfxHit,
+      sfxLevelDone,
+      sfxVictory,
+    };
+  })();
+
   const canvas = document.getElementById('game-canvas');
   const ctx = canvas.getContext('2d');
   const screens = {
@@ -83,7 +276,13 @@
 
   document.getElementById('btn-start').addEventListener('click', startGame);
   document.getElementById('btn-continue').addEventListener('click', continueAfterLevel);
+  const btnMute = document.getElementById('btn-mute');
+  if (btnMute) {
+    GameAudio.bindMuteButton(btnMute);
+    btnMute.addEventListener('click', () => GameAudio.toggleMute());
+  }
   document.getElementById('btn-replay').addEventListener('click', () => {
+    GameAudio.stopBgm();
     showScreen('menu');
     currentLevelIndex = 0;
   });
@@ -127,6 +326,7 @@
   }
 
   function startGame() {
+    GameAudio.init();
     currentLevelIndex = 0;
     showScreen('game');
     // El canvas vive en una sección que al inicio está oculta (display:none) → clientWidth 0.
@@ -153,6 +353,7 @@
     hudLevel.textContent = LEVELS[idx].raceName + ' · ' + LEVELS[idx].km + 'K';
     lastTs = 0;
     if (rafId) cancelAnimationFrame(rafId);
+    GameAudio.startBgm();
     rafId = requestAnimationFrame(gameLoop);
   }
 
@@ -173,7 +374,9 @@
 
   function moveLane(delta) {
     if (!running) return;
+    const prev = playerLane;
     playerLane = Math.max(-1, Math.min(1, playerLane + delta));
+    if (playerLane !== prev) GameAudio.sfxLane(delta);
   }
 
   window.addEventListener('keydown', (e) => {
@@ -312,6 +515,7 @@
   }
 
   function restartCurrentLevel() {
+    GameAudio.sfxHit();
     running = false;
     cancelAnimationFrame(rafId);
     hitFlash.hidden = false;
@@ -329,11 +533,14 @@
   }
 
   function onLevelComplete() {
+    GameAudio.stopBgm();
     const nextIdx = currentLevelIndex + 1;
     if (nextIdx >= LEVELS.length) {
+      GameAudio.sfxVictory();
       showScreen('victory');
       return;
     }
+    GameAudio.sfxLevelDone();
     const nextL = LEVELS[nextIdx];
     betweenTitle.textContent = `¡${LEVELS[currentLevelIndex].raceName} completada!`;
     betweenMsg.textContent = `Siguiente: ${nextL.raceName} (${nextL.km} K). ¡Tú puedes!`;

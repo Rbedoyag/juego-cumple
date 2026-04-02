@@ -216,11 +216,33 @@ kbd {
 
 .hud-km {
   flex: 0 1 auto;
-  max-width: 38%;
+  max-width: 32%;
   text-align: right;
   font-size: clamp(0.72rem, 3vw, 0.85rem);
   color: var(--text);
   font-weight: 700;
+}
+
+.btn-mute {
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.12s ease;
+}
+
+.btn-mute:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.btn-mute:active {
+  transform: scale(0.94);
 }
 
 .progress-track {
