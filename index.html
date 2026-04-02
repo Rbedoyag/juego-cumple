@@ -16,7 +16,16 @@
     <!-- Pantalla de inicio -->
     <section id="screen-menu" class="screen active">
       <div class="card menu-card">
-        <p class="emoji-hero" aria-hidden="true">🏃‍♀️✨</p>
+        <div class="menu-photo-wrap">
+          <img
+            class="menu-photo"
+            src="img.jpeg"
+            width="1200"
+            height="800"
+            alt="Corriendo en carrera, con energía y alegría"
+            decoding="async"
+          />
+        </div>
         <h2 class="menu-title">¿Estás lista para tu reto de 35 años, Mi Reina?</h2>
         <p class="menu-love">Amor, estoy muy feliz de compartir este cumpleaños contigo. Al completar este juego encontrarás una sorpresa.</p>
         <p class="menu-sub">Vista desde atrás: <strong>tres carriles</strong> y obstáculos que vienen hacia ti. <strong>Solo cambia de carril</strong> para esquivar. Completa los <strong>4 tramos</strong> (5K, 10K, 15K y 21K). ¡Premio al final!</p>
@@ -35,6 +44,20 @@
           </div>
           <div class="progress-track">
             <div id="progress-fill" class="progress-fill"></div>
+          </div>
+          <div class="runner-metrics" id="runner-metrics" aria-label="Métricas de carrera">
+            <div class="runner-metrics-head">Corredor · Mafe</div>
+            <div class="runner-metrics-grid">
+              <div class="runner-metric">
+                <span class="runner-metric-label">Tiempo de carrera</span>
+                <span id="metrics-time" class="runner-metric-value">0:00</span>
+              </div>
+              <div class="runner-metric">
+                <span class="runner-metric-label">Ritmo (pace)</span>
+                <span class="runner-metric-value">6:30 /km</span>
+                <span class="runner-metric-sub">6,5 min/km</span>
+              </div>
+            </div>
           </div>
         </div>
         <canvas id="game-canvas" width="800" height="400" aria-label="Juego runner"></canvas>

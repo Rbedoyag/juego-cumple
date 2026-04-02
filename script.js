@@ -45,7 +45,7 @@
       km: 21,
       raceName: 'Media maratón del Quindío',
       hudShort: '21K · Quindío',
-      theme: 'trial',
+      theme: 'street',
       durationMs: 120_000,
       zSpeed: 600,
       spawnMin: 1.05,
@@ -76,6 +76,7 @@
   const hudLevel = document.getElementById('hud-level');
   const hudKm = document.getElementById('hud-km');
   const progressFill = document.getElementById('progress-fill');
+  const metricsTime = document.getElementById('metrics-time');
   const betweenTitle = document.getElementById('between-title');
   const betweenMsg = document.getElementById('between-msg');
   const hitFlash = document.getElementById('hit-flash');
@@ -228,7 +229,7 @@
     }
 
     const progress = elapsed / L.durationMs;
-    updateHud(L, progress);
+    updateHud(L, progress, elapsed);
 
     const zSpeed = L.zSpeed;
     roadPhase += zSpeed * 0.00012 * dt;
@@ -270,7 +271,14 @@
     return o.lane === playerLane;
   }
 
-  function updateHud(L, progress) {
+  function formatRaceTime(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  }
+
+  function updateHud(L, progress, elapsedMs) {
     const kmLeft = L.km * (1 - progress);
     if (kmLeft < 0.05) {
       hudKm.textContent = '¡Meta! · ' + L.raceName;
@@ -280,6 +288,7 @@
       hudKm.textContent = `${kmLeft.toFixed(1)} km restantes`;
     }
     progressFill.style.width = `${(progress * 100).toFixed(2)}%`;
+    if (metricsTime) metricsTime.textContent = formatRaceTime(elapsedMs);
   }
 
   function spawnObstacle(L) {
@@ -544,12 +553,21 @@
       if (p.t < 0.02) continue;
       const base = 52 * def.size * p.scale;
       const shadowY = p.y + base * 0.45;
-      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.fillStyle = 'rgba(0,0,0,0.52)';
       ctx.beginPath();
-      ctx.ellipse(p.x, shadowY, base * 0.55, base * 0.18, 0, 0, Math.PI * 2);
+      ctx.ellipse(p.x, shadowY, base * 0.58, base * 0.2, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.font = `${Math.max(18, base * 1.15)}px "Segoe UI Emoji", "Apple Color Emoji", serif`;
+      const fontPx = Math.max(20, base * 1.28);
+      ctx.font = `${fontPx}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", serif`;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y - base * 0.12, base * 0.52, base * 0.42, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = Math.max(2, 2.2 * p.scale);
+      ctx.strokeStyle = 'rgba(30, 30, 30, 0.35)';
+      ctx.stroke();
+
       ctx.fillText(def.emoji, p.x, p.y - base * 0.15);
 
       if (theme === 'street' && o.type === 'cone') {
