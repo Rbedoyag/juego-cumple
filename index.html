@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="description" content="Reto runner de cumpleaños — invitación especial" />
+  <title>Reto 35K — ¡Feliz cumple!</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="top-bar">
+      <h1 class="brand">Reto 35K Colombia 🇨🇴</h1>
+    </header>
+
+    <!-- Pantalla de inicio -->
+    <section id="screen-menu" class="screen active">
+      <div class="card menu-card">
+        <p class="emoji-hero" aria-hidden="true">🏃‍♀️✨</p>
+        <h2 class="menu-title">¿Estás lista para tu reto de 35 años, Mi Reina?</h2>
+        <p class="menu-love">Amor, estoy muy feliz de compartir este cumpleaños contigo. Al completar este juego encontrarás una sorpresa.</p>
+        <p class="menu-sub">Corre por calles y montañas, esquiva obstáculos y completa los <strong>4 tramos</strong> (5K, 10K, 15K y 21K). ¡Te espera un premio al final!</p>
+        <p class="hint"><kbd>Espacio</kbd> o tocar la pantalla para saltar</p>
+        <button type="button" id="btn-start" class="btn primary">Empezar carrera</button>
+      </div>
+    </section>
+
+    <!-- Juego -->
+    <section id="screen-game" class="screen">
+      <div class="game-wrap">
+        <div class="hud">
+          <div class="hud-row">
+            <span id="hud-level" class="hud-badge">Nivel 1 · Calle</span>
+            <span id="hud-km" class="hud-km">5 km restantes</span>
+          </div>
+          <div class="progress-track">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+        </div>
+        <canvas id="game-canvas" width="800" height="400" aria-label="Juego runner"></canvas>
+        <p id="tap-hint" class="tap-hint">Toca o pulsa espacio para saltar</p>
+      </div>
+    </section>
+
+    <!-- Entre niveles -->
+    <section id="screen-between" class="screen">
+      <div class="card between-card">
+        <p class="between-emoji" aria-hidden="true">🎊</p>
+        <h2 id="between-title" class="between-title"></h2>
+        <p id="between-msg" class="between-msg"></p>
+        <button type="button" id="btn-continue" class="btn primary">Continuar</button>
+      </div>
+    </section>
+
+    <!-- Victoria final -->
+    <section id="screen-victory" class="screen">
+      <div class="card victory-card">
+        <p class="victory-emoji" aria-hidden="true">🎂💕</p>
+        <h2 class="victory-line1">¡FELICIDADES POR TUS 35 AÑOS MI AMOR! 🎉 Eres una campeona.</h2>
+        <p class="victory-line2">Has desbloqueado tu premio: Una invitación a cenar para celebrar.</p>
+        <div class="date-box">
+          <p class="date-label">Tu cita</p>
+          <p class="date-highlight">Este Viernes 3 a las 7:00 PM</p>
+        </div>
+        <p class="victory-foot">Con todo mi cariño — gracias por correr este reto conmigo.</p>
+        <button type="button" id="btn-replay" class="btn ghost">Jugar otra vez</button>
+      </div>
+    </section>
+
+    <!-- Golpe / reinicio nivel (overlay breve) -->
+    <div id="hit-flash" class="hit-flash" hidden>
+      <p>¡Ups! Seguimos en este tramo — ¡tú puedes!</p>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>

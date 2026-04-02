@@ -1,0 +1,329 @@
+/* Reto 35K — estilos responsivos para GitHub Pages */
+
+:root {
+  --bg: #0f1419;
+  --card: #1a2332;
+  --text: #e8ecf1;
+  --muted: #9aa8b8;
+  --accent: #f4a261;
+  --accent-2: #2a9d8f;
+  --gold: #e9c46a;
+  --danger: #e76f51;
+  --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+#app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0.75rem 1rem 2rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.top-bar {
+  text-align: center;
+  padding: 0.5rem 0;
+}
+
+.brand {
+  margin: 0;
+  font-size: clamp(1rem, 4vw, 1.35rem);
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 0.02em;
+}
+
+.screen {
+  display: none;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
+.screen.active {
+  display: flex;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 1.5rem 1.25rem;
+  width: 100%;
+  max-width: 520px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.menu-card {
+  text-align: center;
+}
+
+.emoji-hero {
+  font-size: 3rem;
+  margin: 0 0 0.5rem;
+  line-height: 1;
+}
+
+.menu-title {
+  font-size: clamp(1.15rem, 4.5vw, 1.5rem);
+  margin: 0 0 1rem;
+  line-height: 1.35;
+  color: #fff;
+}
+
+.menu-love {
+  margin: 0 0 1rem;
+  font-size: clamp(0.95rem, 3.8vw, 1.05rem);
+  line-height: 1.5;
+  color: #f9e2c8;
+  font-weight: 500;
+}
+
+.menu-sub {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0 0 1rem;
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: var(--accent-2);
+  margin: 0 0 1.25rem;
+}
+
+kbd {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.btn {
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 0.85rem 1.5rem;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn.primary {
+  background: linear-gradient(135deg, var(--accent), #e76f51);
+  color: #1a0a06;
+  width: 100%;
+  max-width: 280px;
+}
+
+.btn.primary:hover {
+  filter: brightness(1.08);
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  margin-top: 1rem;
+  width: 100%;
+  max-width: 280px;
+}
+
+.btn.ghost:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* HUD + canvas */
+.game-wrap {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.hud {
+  margin-bottom: 0.5rem;
+}
+
+.hud-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.hud-badge {
+  font-size: 0.8rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.hud-km {
+  font-size: 0.85rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.progress-track {
+  height: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-2), var(--gold));
+  border-radius: 999px;
+  transition: width 0.08s linear;
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 16px;
+  background: #1d2b3a;
+  touch-action: manipulation;
+  cursor: pointer;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.tap-hint {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0.5rem 0 0;
+}
+
+/* Entre niveles */
+.between-card {
+  text-align: center;
+}
+
+.between-emoji {
+  font-size: 2.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.between-title {
+  margin: 0 0 0.75rem;
+  font-size: clamp(1.2rem, 4vw, 1.45rem);
+}
+
+.between-msg {
+  color: var(--muted);
+  margin: 0 0 1.25rem;
+  line-height: 1.45;
+}
+
+/* Victoria */
+.victory-card {
+  text-align: center;
+  max-width: 560px;
+}
+
+.victory-emoji {
+  font-size: 2.75rem;
+  margin: 0 0 0.5rem;
+}
+
+.victory-line1 {
+  font-size: clamp(1rem, 3.5vw, 1.2rem);
+  line-height: 1.4;
+  margin: 0 0 1rem;
+  color: #fff;
+}
+
+.victory-line2 {
+  font-size: 1rem;
+  color: var(--muted);
+  margin: 0 0 1.25rem;
+  line-height: 1.45;
+}
+
+.date-box {
+  background: linear-gradient(145deg, rgba(244, 162, 97, 0.2), rgba(42, 157, 143, 0.15));
+  border: 2px solid var(--gold);
+  border-radius: 16px;
+  padding: 1rem 1.25rem;
+  margin: 0 0 1rem;
+}
+
+.date-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.date-highlight {
+  margin: 0;
+  font-size: clamp(1.15rem, 4vw, 1.5rem);
+  font-weight: 800;
+  color: var(--gold);
+  text-shadow: 0 0 20px rgba(233, 196, 106, 0.35);
+}
+
+.victory-foot {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Flash al chocar */
+.hit-flash {
+  position: fixed;
+  inset: 0;
+  background: rgba(231, 111, 81, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+  text-align: center;
+  font-size: clamp(1rem, 4vw, 1.25rem);
+  font-weight: 700;
+  color: #fff;
+}
+
+.hit-flash[hidden] {
+  display: none !important;
+}
+
+@media (min-width: 600px) {
+  .card {
+    padding: 2rem 2rem;
+  }
+}
